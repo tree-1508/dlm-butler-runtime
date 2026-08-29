@@ -66,12 +66,15 @@ async function main(args) {
    *   arch: "i686" | "x86_64",
    *   userSpecifiedOS?: boolean,
    *   userSpecifiedArch?: boolean,
+   *   skipSigning: boolean,
+   *   exeOnly: boolean,
    * }}
    */
   let opts = {
     os: detectOS(),
     arch: DEFAULT_ARCH,
     skipSigning: false,
+    exeOnly: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -87,6 +90,11 @@ async function main(args) {
 
       if (k === "skip-signing") {
         opts.skipSigning = true;
+        continue;
+      }
+
+      if (k === "exe-only") {
+        opts.exeOnly = true;
         continue;
       }
 
@@ -243,7 +251,11 @@ async function main(args) {
   $(`mv ${target} ${fullTarget}`);
   $(`file ${fullTarget}`);
   $(`${fullTarget} -V`);
-  $(`${fullTarget} fetch-7z-libs`);
+  if (opts.exeOnly) {
+    console.log("DLD exe-only topology: skipping 7-Zip/libc7zip sidecar acquisition");
+  } else {
+    $(`${fullTarget} fetch-7z-libs`);
+  }
 
   let fullButlerPath = resolve(process.cwd(), fullTarget);
   $(`go test -v ./butlerd/integrate --butlerPath='${fullButlerPath}'`);
