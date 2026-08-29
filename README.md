@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> This repository is the DLM-maintained hardened fork of `itchio/butler` for an optional Doujin Library Manager runtime.
+> It is not official itch.io software and does not imply itch.io endorsement. See `DLD_FORK_NOTICE.md` and `CODE_SIGNING_POLICY.md`.
+
 # butler
 
 [![test](https://github.com/itchio/butler/actions/workflows/test.yml/badge.svg)](https://github.com/itchio/butler/actions/workflows/test.yml)

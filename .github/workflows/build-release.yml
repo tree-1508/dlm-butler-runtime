@@ -1,490 +1,67 @@
-name: Build and Release
+name: DLD Windows unsigned trusted build
 
 on:
   workflow_dispatch:
-    inputs:
-      deploy_linux_amd64:
-        description: 'Deploy Linux x86_64'
-        type: boolean
-        default: true
-      deploy_linux_arm64:
-        description: 'Deploy Linux arm64'
-        type: boolean
-        default: true
-      deploy_windows_amd64:
-        description: 'Deploy Windows x86_64'
-        type: boolean
-        default: true
-      deploy_darwin_amd64:
-        description: 'Deploy macOS x86_64'
-        type: boolean
-        default: true
-      deploy_darwin_arm64:
-        description: 'Deploy macOS arm64'
-        type: boolean
-        default: true
+  push:
+    branches: [dld-051-v15.30.0]
+  pull_request:
+    branches: [dld-051-v15.30.0]
+
+permissions:
+  contents: read
 
 jobs:
-  build-windows-x86_64:
-    if: inputs.deploy_windows_amd64
+  build-windows-amd64:
     runs-on: windows-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: 'go.mod'
+          go-version: '1.26.7'
+          cache: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
-          node-version: '22'
+          node-version: '22.23.2'
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci --no-audit
-
-      - name: Build Windows x86_64
-        run: node release/build.js --os windows --arch x86_64 --skip-signing
-
-      - name: Upload unsigned artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-amd64-unsigned
-          path: artifacts/windows-amd64/
-          retention-days: 7
-
-  build-darwin-x86_64:
-    if: inputs.deploy_darwin_amd64
-    runs-on: macos-15-intel
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci --no-audit
-
-      - name: Build macOS x86_64
-        run: node release/build.js --os darwin --arch x86_64 --skip-signing
-
-      - name: Upload unsigned artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: darwin-amd64-unsigned
-          path: artifacts/darwin-amd64/
-          retention-days: 7
-
-  build-darwin-arm64:
-    if: inputs.deploy_darwin_arm64
-    runs-on: macos-15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci --no-audit
-
-      - name: Build macOS arm64
-        run: node release/build.js --os darwin --arch arm64 --skip-signing
-
-      - name: Upload unsigned artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: darwin-arm64-unsigned
-          path: artifacts/darwin-arm64/
-          retention-days: 7
-
-  build-linux-x86_64:
-    if: inputs.deploy_linux_amd64
-    runs-on: ubuntu-latest
-    container:
-      image: debian:bullseye
-    steps:
-      - name: Install system dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl git ca-certificates build-essential file
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci --no-audit
-
-      - name: Build Linux x86_64
-        run: node release/build.js --os linux --arch x86_64
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: linux-amd64
-          path: artifacts/linux-amd64/
-          retention-days: 7
-
-  build-linux-arm64:
-    if: inputs.deploy_linux_arm64
-    runs-on: ubuntu-22.04-arm
-    container:
-      image: debian:bullseye
-    steps:
-      - name: Install system dependencies
-        run: |
-          apt-get update
-          apt-get install -y curl git ca-certificates build-essential file
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci --no-audit
-
-      - name: Build Linux arm64
-        run: node release/build.js --os linux --arch arm64
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: linux-arm64
-          path: artifacts/linux-arm64/
-          retention-days: 7
-
-
-  sign-windows:
-    needs: [build-windows-x86_64]
-    if: inputs.deploy_windows_amd64
-    runs-on: windows-latest
-    environment: signing-windows
-    steps:
-      - name: Download unsigned artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: windows-amd64-unsigned
-          path: artifacts/windows-amd64/
-
-      - name: Sign butler.exe with Azure
-        uses: azure/artifact-signing-action@v1
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: https://wus2.codesigning.azure.net
-          signing-account-name: itchio
-          certificate-profile-name: itchio
-          files: ${{ github.workspace }}/artifacts/windows-amd64/butler.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Verify signature
+      - name: Verify dependency graph is clean
         shell: pwsh
         run: |
-          $sig = Get-AuthenticodeSignature -FilePath "artifacts/windows-amd64/butler.exe"
-          $sig | Format-List *
-          if ($sig.Status -ne "Valid") {
-            Write-Error "Signature verification failed: $($sig.Status)"
-            exit 1
-          }
-          Write-Host "Signature verified successfully"
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
 
-      - name: Upload signed artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: windows-amd64
-          path: artifacts/windows-amd64/
-          retention-days: 7
-
-  sign-darwin:
-    needs: [build-darwin-x86_64, build-darwin-arm64]
-    if: ${{ always() && !cancelled() && (inputs.deploy_darwin_amd64 || inputs.deploy_darwin_arm64) && (!inputs.deploy_darwin_amd64 || needs.build-darwin-x86_64.result == 'success') && (!inputs.deploy_darwin_arm64 || needs.build-darwin-arm64.result == 'success') }}
-    runs-on: macos-15
-    environment: signing-macos
-    steps:
-      - name: Download x86_64 unsigned artifact
-        if: inputs.deploy_darwin_amd64
-        uses: actions/download-artifact@v7
-        with:
-          name: darwin-amd64-unsigned
-          path: artifacts/darwin-amd64/
-
-      - name: Download arm64 unsigned artifact
-        if: inputs.deploy_darwin_arm64
-        uses: actions/download-artifact@v7
-        with:
-          name: darwin-arm64-unsigned
-          path: artifacts/darwin-arm64/
-
-      - name: Check execute permissions
-        run: |
-          for dir in darwin-amd64 darwin-arm64; do
-            if [ -f "artifacts/$dir/butler" ]; then
-              echo "=== $dir before chmod ==="
-              ls -la "artifacts/$dir/butler"
-              file "artifacts/$dir/butler"
-              xattr -l "artifacts/$dir/butler" || true
-              chmod +x "artifacts/$dir/butler"
-              echo "=== $dir after chmod ==="
-              ls -la "artifacts/$dir/butler"
-            fi
-          done
-
-      - name: Import certificate
-        env:
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          # Create temporary keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
-
-          # Decode certificate
-          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
-
-          # Create and configure keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Import certificate
-          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
-
-          # Save keychain path for later steps
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-
-      - name: Create universal binary
-        if: inputs.deploy_darwin_amd64 && inputs.deploy_darwin_arm64
-        run: |
-          mkdir -p artifacts/darwin-universal
-          lipo -create \
-            artifacts/darwin-amd64/butler \
-            artifacts/darwin-arm64/butler \
-            -output artifacts/darwin-universal/butler
-          chmod +x artifacts/darwin-universal/butler
-          file artifacts/darwin-universal/butler
-
-      - name: Sign binaries
-        env:
-          SIGN_KEY: "Developer ID Application: itch corp. (AK2D34UDP2)"
-        run: |
-          # Sign x86_64 binary
-          if [ -f "artifacts/darwin-amd64/butler" ]; then
-            echo "Signing darwin-amd64..."
-            codesign --deep --force --verbose --options runtime \
-              --sign "$SIGN_KEY" "artifacts/darwin-amd64/butler"
-          fi
-
-          # Sign arm64 binary
-          if [ -f "artifacts/darwin-arm64/butler" ]; then
-            echo "Signing darwin-arm64..."
-            codesign --deep --force --verbose --options runtime \
-              --sign "$SIGN_KEY" "artifacts/darwin-arm64/butler"
-          fi
-
-          # Sign universal binary
-          if [ -f "artifacts/darwin-universal/butler" ]; then
-            echo "Signing darwin-universal..."
-            codesign --deep --force --verbose --options runtime \
-              --sign "$SIGN_KEY" "artifacts/darwin-universal/butler"
-          fi
-
-      - name: Verify signatures
-        run: |
-          for dir in darwin-amd64 darwin-arm64 darwin-universal; do
-            if [ -f "artifacts/$dir/butler" ]; then
-              echo "Verifying $dir..."
-              codesign --verify -vvvv "artifacts/$dir/butler"
-            fi
-          done
-
-      - name: Notarize binaries
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for dir in darwin-amd64 darwin-arm64 darwin-universal; do
-            if [ -f "artifacts/$dir/butler" ]; then
-              echo "Notarizing $dir..."
-              ZIP_FILE="$RUNNER_TEMP/butler-$dir.zip"
-
-              # CLI tools must be zipped for notarization
-              ditto -c -k --keepParent "artifacts/$dir/butler" "$ZIP_FILE"
-
-              xcrun notarytool submit "$ZIP_FILE" \
-                --apple-id "$APPLE_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-                --team-id "$APPLE_TEAM_ID" \
-                --wait
-
-              rm "$ZIP_FILE"
-            fi
-          done
-
-      - name: Test binaries
-        run: |
-          for dir in darwin-amd64 darwin-arm64 darwin-universal; do
-            if [ -f "artifacts/$dir/butler" ]; then
-              echo "Testing $dir..."
-              "artifacts/$dir/butler" -V
-            fi
-          done
-
-      - name: Clean up keychain
-        if: always()
-        run: |
-          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
-            security delete-keychain "$KEYCHAIN_PATH" || true
-          fi
-          rm -f $RUNNER_TEMP/certificate.p12 || true
-
-      - name: Upload signed darwin-amd64
-        if: inputs.deploy_darwin_amd64
-        uses: actions/upload-artifact@v6
-        with:
-          name: darwin-amd64
-          path: artifacts/darwin-amd64/
-          retention-days: 7
-
-      - name: Upload signed darwin-arm64
-        if: inputs.deploy_darwin_arm64
-        uses: actions/upload-artifact@v6
-        with:
-          name: darwin-arm64
-          path: artifacts/darwin-arm64/
-          retention-days: 7
-
-      - name: Upload signed darwin-universal
-        if: inputs.deploy_darwin_amd64 && inputs.deploy_darwin_arm64
-        uses: actions/upload-artifact@v6
-        with:
-          name: darwin-universal
-          path: artifacts/darwin-universal/
-          retention-days: 7
-
-  deploy:
-    needs: [build-linux-x86_64, build-linux-arm64, sign-windows, sign-darwin]
-    if: ${{ always() && !cancelled() && (inputs.deploy_linux_amd64 || inputs.deploy_linux_arm64 || inputs.deploy_windows_amd64 || inputs.deploy_darwin_amd64 || inputs.deploy_darwin_arm64) && (!inputs.deploy_linux_amd64 || needs.build-linux-x86_64.result == 'success') && (!inputs.deploy_linux_arm64 || needs.build-linux-arm64.result == 'success') && (!inputs.deploy_windows_amd64 || needs.sign-windows.result == 'success') && ((!inputs.deploy_darwin_amd64 && !inputs.deploy_darwin_arm64) || needs.sign-darwin.result == 'success') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    environment: production
-    env:
-      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
+      - name: Install locked Node dependencies
         run: npm ci --no-audit
 
-      - name: Download x86_64 artifacts
-        if: inputs.deploy_linux_amd64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: linux-amd64
-          path: artifacts/linux-amd64/
+      - name: Build unsigned Windows runtime
+        run: node release/build.js --os windows --arch x86_64 --skip-signing
 
-      - name: Download arm64 artifacts
-        if: inputs.deploy_linux_arm64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: linux-arm64
-          path: artifacts/linux-arm64/
-
-      - name: Download Windows x86_64 artifacts
-        if: inputs.deploy_windows_amd64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: windows-amd64
-          path: artifacts/windows-amd64/
-
-      - name: Download macOS x86_64 artifacts
-        if: inputs.deploy_darwin_amd64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: darwin-amd64
-          path: artifacts/darwin-amd64/
-
-      - name: Download macOS arm64 artifacts
-        if: inputs.deploy_darwin_arm64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: darwin-arm64
-          path: artifacts/darwin-arm64/
-
-      - name: Download macOS universal artifacts
-        if: inputs.deploy_darwin_amd64 != false && inputs.deploy_darwin_arm64 != false
-        uses: actions/download-artifact@v7
-        with:
-          name: darwin-universal
-          path: artifacts/darwin-universal/
-
-      - name: Deploy
-        run: node release/deploy.js
-
-      - name: Package artifacts for GitHub Release
-        if: github.ref_type == 'tag'
+      - name: Record build identity
+        shell: pwsh
         run: |
-          cd artifacts
-          for variant in */; do
-            variant="${variant%/}"
-            zip -r "../butler-${variant}.zip" "$variant"
-          done
+          New-Item -ItemType Directory -Force artifacts/provenance | Out-Null
+          git rev-parse HEAD | Out-File -Encoding ascii artifacts/provenance/git-commit.txt
+          go version | Out-File -Encoding ascii artifacts/provenance/go-version.txt
+          node --version | Out-File -Encoding ascii artifacts/provenance/node-version.txt
+          npm --version | Out-File -Encoding ascii artifacts/provenance/npm-version.txt
+          Get-FileHash artifacts/windows-amd64/butler.exe -Algorithm SHA256 |
+            Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-sha256.txt
+          Get-ComputerInfo -Property OsName,OsVersion,WindowsVersion,OsBuildNumber |
+            Format-List | Out-File -Encoding utf8 artifacts/provenance/runner-os.txt
 
-      - name: Upload to GitHub Release
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" butler-*.zip --clobber
+      - name: Upload unsigned artifact before any signing request
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dld-windows-amd64-unsigned-${{ github.sha }}
+          path: |
+            artifacts/windows-amd64/
+            artifacts/provenance/
+          retention-days: 30
+          if-no-files-found: error

@@ -221,19 +221,10 @@ async function main(args) {
   }
 
   if (opts.os === "windows" && !opts.skipSigning) {
-    let signArgs = [
-      "sign", // verb
-      "//v", // verbose
-      "//s MY", // store
-      `//n "itch corp"`, // name
-      `//fd sha256`, // file digest algo (default is SHA-1)
-      `//tr http://timestamp.comodoca.com/?td=sha256`, // URL of RFC 3161 timestamp server
-      `//td sha256`, // timestamp digest algo
-      `//a`, // choose best cert
-      target,
-    ];
-
-    $(`tools/signtool.exe ${signArgs.join(" ")}`);
+    throw new Error(
+      "DLD public fork forbids local/legacy Windows signing. " +
+      "Build with --skip-signing; release signing is performed only by the approved SignPath trusted-build path."
+    );
   }
 
   if (opts.os === "darwin" && !opts.skipSigning) {

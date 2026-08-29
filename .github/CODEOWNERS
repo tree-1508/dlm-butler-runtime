@@ -1,0 +1,10 @@
+# Sensitive paths and default ownership
+* @tree-1508
+/.github/workflows/ @tree-1508
+/.github/CODEOWNERS @tree-1508
+/.signpath/ @tree-1508
+/release/ @tree-1508
+/go.mod @tree-1508
+/go.sum @tree-1508
+/butler.rc @tree-1508
+/butler.manifest.xml @tree-1508
