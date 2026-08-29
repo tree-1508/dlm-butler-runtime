@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-windows-amd64:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
@@ -64,15 +64,89 @@ jobs:
           npm --version | Out-File -Encoding ascii artifacts/provenance/npm-version.txt
           Get-FileHash artifacts/windows-amd64/butler.exe -Algorithm SHA256 |
             Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-sha256.txt
+          Get-Item artifacts/windows-amd64/butler.exe |
+            Select-Object Name,Length,LastWriteTimeUtc |
+            Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-file.txt
           Get-ComputerInfo -Property OsName,OsVersion,WindowsVersion,OsBuildNumber |
             Format-List | Out-File -Encoding utf8 artifacts/provenance/runner-os.txt
 
-      - name: Upload unsigned artifact before any signing request
+      - name: Install pinned compliance tools
+        shell: pwsh
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          cyclonedx-gomod version | Out-File -Encoding utf8 artifacts/provenance/cyclonedx-gomod-version.txt
+          govulncheck -version | Out-File -Encoding utf8 artifacts/provenance/govulncheck-version.txt
+
+      - name: Generate exact binary inventory, notices and corresponding source
+        shell: pwsh
+        run: |
+          ./.github/scripts/dld051-compliance.ps1 `
+            -BinaryPath artifacts/windows-amd64/butler.exe `
+            -OutDir artifacts/compliance
+
+      - name: Generate CycloneDX exact-binary and Windows-source SBOMs
+        shell: pwsh
+        run: |
+          cyclonedx-gomod bin -json `
+            -output artifacts/compliance/butler-exact-binary.cdx.json `
+            artifacts/windows-amd64/butler.exe
+          cyclonedx-gomod app -licenses -json `
+            -output artifacts/compliance/butler-windows-amd64-source.cdx.json `
+            .
+
+      - name: Scan exact binary with govulncheck
+        id: govulncheck
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          govulncheck -mode=binary -json artifacts/windows-amd64/butler.exe |
+            Out-File -Encoding utf8 artifacts/compliance/govulncheck-exact-binary.json
+          $code = $LASTEXITCODE
+          "$code" | Out-File -Encoding ascii artifacts/compliance/govulncheck-exit-code.txt
+          Write-Host "govulncheck exit code: $code"
+          exit 0
+
+      - name: Enforce vulnerability closure
+        shell: pwsh
+        run: |
+          $report = 'artifacts/compliance/govulncheck-exact-binary.json'
+          if (-not (Test-Path -LiteralPath $report)) { throw 'govulncheck report is missing' }
+          $findings = @(Select-String -LiteralPath $report -Pattern '"finding"\s*:' -AllMatches)
+          $count = 0
+          foreach ($line in $findings) { $count += $line.Matches.Count }
+          "$count" | Out-File -Encoding ascii artifacts/compliance/govulncheck-finding-count.txt
+          if ($count -ne 0) {
+            throw "Exact butler.exe has $count govulncheck finding record(s); disposition is required before DLD-051 license/security closure"
+          }
+          Write-Host 'No govulncheck finding records for the exact butler.exe.'
+
+      - name: Assert compliance payload
+        shell: pwsh
+        run: |
+          $required = @(
+            'artifacts/compliance/EXACT_BINARY_MODULES.tsv',
+            'artifacts/compliance/LICENSE_MANIFEST.json',
+            'artifacts/compliance/THIRD_PARTY_NOTICES.txt',
+            'artifacts/compliance/dld-051-corresponding-source.zip',
+            'artifacts/compliance/SHA256SUMS.txt',
+            'artifacts/compliance/butler-exact-binary.cdx.json',
+            'artifacts/compliance/butler-windows-amd64-source.cdx.json',
+            'artifacts/compliance/govulncheck-exact-binary.json',
+            'artifacts/compliance/govulncheck-finding-count.txt'
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing compliance artifact: $path" }
+          }
+
+      - name: Upload unsigned runtime and compliance evidence before any signing request
+        if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: dld-windows-amd64-unsigned-${{ github.sha }}
+          name: dld-windows-amd64-unsigned-compliance-${{ github.sha }}
           path: |
             artifacts/windows-amd64/
             artifacts/provenance/
+            artifacts/compliance/
           retention-days: 30
           if-no-files-found: error
