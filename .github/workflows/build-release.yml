@@ -41,7 +41,18 @@ jobs:
         run: npm ci --no-audit
 
       - name: Build unsigned Windows runtime
-        run: node release/build.js --os windows --arch x86_64 --skip-signing
+        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only
+
+      - name: Assert exe-only artifact topology
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath artifacts/windows-amd64 -File)
+          $names = @($files | ForEach-Object { $_.Name })
+          if ($names.Count -ne 1 -or $names[0] -ne "butler.exe") {
+            throw "Expected exact exe-only artifact [butler.exe], got: $($names -join ', ')"
+          }
+          if (Test-Path -LiteralPath artifacts/windows-amd64/7z.dll) { throw "7z.dll must not be present" }
+          if (Test-Path -LiteralPath artifacts/windows-amd64/c7zip.dll) { throw "c7zip.dll must not be present" }
 
       - name: Record build identity
         shell: pwsh
