@@ -95,13 +95,19 @@ foreach ($dep in $deps) {
 $notice.ToString() | Set-Content -Encoding utf8 (Join-Path $OutDir 'THIRD_PARTY_NOTICES.txt')
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $OutDir 'LICENSE_MANIFEST.json')
 
+$missingPath = Join-Path $OutDir 'MISSING_LICENSE_EVIDENCE.txt'
 if ($missing.Count -gt 0) {
-    $missing | Set-Content -Encoding utf8 (Join-Path $OutDir 'MISSING_LICENSE_EVIDENCE.txt')
-    throw "License evidence missing for exact linked modules: $($missing -join ', ')"
+    $missing | Set-Content -Encoding utf8 $missingPath
+    'HOLD' | Set-Content -Encoding ascii (Join-Path $OutDir 'LICENSE_GATE_STATUS.txt')
+} else {
+    if (Test-Path -LiteralPath $missingPath) { Remove-Item -LiteralPath $missingPath -Force }
+    'PASS' | Set-Content -Encoding ascii (Join-Path $OutDir 'LICENSE_GATE_STATUS.txt')
 }
 
 # GPL-family code is linked into the executable. Bundle the exact repository plus vendored
 # Go dependency sources so the pre-release can accompany the executable with corresponding source.
+# This evidence is generated even while the license gate is HOLD so Security can inspect the
+# exact candidate without losing downstream SBOM/vulnerability evidence.
 $stageRoot = Join-Path $env:RUNNER_TEMP 'dld051-corresponding-source'
 if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
@@ -116,6 +122,10 @@ Copy-Item -LiteralPath 'vendor' -Destination (Join-Path $stageRoot 'vendor') -Re
 Copy-Item -LiteralPath $licensesDir -Destination (Join-Path $stageRoot 'EXACT_BINARY_LICENSES') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $OutDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $stageRoot 'THIRD_PARTY_NOTICES.txt') -Force
 Copy-Item -LiteralPath (Join-Path $OutDir 'EXACT_BINARY_MODULES.tsv') -Destination (Join-Path $stageRoot 'EXACT_BINARY_MODULES.tsv') -Force
+Copy-Item -LiteralPath (Join-Path $OutDir 'LICENSE_GATE_STATUS.txt') -Destination (Join-Path $stageRoot 'LICENSE_GATE_STATUS.txt') -Force
+if (Test-Path -LiteralPath $missingPath) {
+    Copy-Item -LiteralPath $missingPath -Destination (Join-Path $stageRoot 'MISSING_LICENSE_EVIDENCE.txt') -Force
+}
 $sourceZip = Join-Path $OutDir 'dld-051-corresponding-source.zip'
 if (Test-Path -LiteralPath $sourceZip) { Remove-Item -LiteralPath $sourceZip -Force }
 Compress-Archive -Path (Join-Path $stageRoot '*') -DestinationPath $sourceZip -CompressionLevel Optimal
@@ -128,5 +138,11 @@ $sourceHash = Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256
 ) | Set-Content -Encoding ascii (Join-Path $OutDir 'SHA256SUMS.txt')
 
 Write-Host "Exact linked module count: $($deps.Count)"
-Write-Host "License evidence complete for all exact linked modules."
+Write-Host "Modules with collected license evidence: $($manifest.Count)"
+Write-Host "Modules missing license evidence: $($missing.Count)"
+if ($missing.Count -gt 0) {
+    Write-Warning "License gate remains HOLD: $($missing -join ', ')"
+} else {
+    Write-Host 'License evidence complete for all exact linked modules.'
+}
 Write-Host "Corresponding-source bundle: $sourceZip"
