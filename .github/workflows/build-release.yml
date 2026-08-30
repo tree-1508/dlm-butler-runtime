@@ -35,13 +35,14 @@ jobs:
         shell: pwsh
         run: |
           go mod verify
-          git diff --exit-code -- go.mod go.sum
+          go -C dldruntime mod verify
+          git diff --exit-code -- go.mod go.sum dldruntime/go.mod dldruntime/go.sum
 
       - name: Install locked Node dependencies
         run: npm ci --no-audit
 
       - name: Build unsigned Windows runtime
-        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only
+        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only --dld-runtime
 
       - name: Assert exe-only artifact topology
         shell: pwsh
@@ -53,6 +54,19 @@ jobs:
           }
           if (Test-Path -LiteralPath artifacts/windows-amd64/7z.dll) { throw "7z.dll must not be present" }
           if (Test-Path -LiteralPath artifacts/windows-amd64/c7zip.dll) { throw "c7zip.dll must not be present" }
+
+      - name: Prove DLD stdio runtime starts without provider traffic
+        shell: pwsh
+        run: |
+          $requests = @(
+            '{"jsonrpc":"2.0","id":1,"method":"Version.Get","params":{}}',
+            '{"jsonrpc":"2.0","id":2,"method":"Meta.Shutdown","params":{}}'
+          ) -join "`n"
+          $responses = $requests | & artifacts/windows-amd64/butler.exe daemon --json --transport stdio
+          if ($LASTEXITCODE -ne 0) { throw "DLD stdio runtime exited with $LASTEXITCODE" }
+          $joined = $responses -join "`n"
+          if ($joined -notmatch '"id":1' -or $joined -notmatch '"versionString"') { throw 'Version.Get response missing' }
+          if ($joined -notmatch '"id":2') { throw 'Meta.Shutdown response missing' }
 
       - name: Record build identity
         shell: pwsh
@@ -91,9 +105,13 @@ jobs:
           cyclonedx-gomod bin -json `
             -output artifacts/compliance/butler-exact-binary.cdx.json `
             artifacts/windows-amd64/butler.exe
-          cyclonedx-gomod app -licenses -json `
-            -output artifacts/compliance/butler-windows-amd64-source.cdx.json `
-            .
+          $sourceSbom = (Resolve-Path artifacts/compliance).Path + '/butler-windows-amd64-source.cdx.json'
+          Push-Location dldruntime
+          try {
+            cyclonedx-gomod app -licenses -json -output $sourceSbom .
+          } finally {
+            Pop-Location
+          }
 
       - name: Scan exact binary with govulncheck
         id: govulncheck

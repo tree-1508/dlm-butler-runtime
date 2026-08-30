@@ -68,6 +68,7 @@ async function main(args) {
    *   userSpecifiedArch?: boolean,
    *   skipSigning: boolean,
    *   exeOnly: boolean,
+   *   dldRuntime: boolean,
    * }}
    */
   let opts = {
@@ -75,6 +76,7 @@ async function main(args) {
     arch: DEFAULT_ARCH,
     skipSigning: false,
     exeOnly: false,
+    dldRuntime: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -95,6 +97,11 @@ async function main(args) {
 
       if (k === "exe-only") {
         opts.exeOnly = true;
+        continue;
+      }
+
+      if (k === "dld-runtime") {
+        opts.dldRuntime = true;
         continue;
       }
 
@@ -181,7 +188,13 @@ async function main(args) {
     version = process.env.GITHUB_REF_NAME;
   }
 
-  let bi = `github.com/itchio/butler/buildinfo`;
+  if (opts.dldRuntime && opts.os !== "windows") {
+    throw new Error("The DLD narrow runtime is a Windows-only qualification target");
+  }
+
+  let bi = opts.dldRuntime
+    ? `github.com/tree-1508/dlm-butler-runtime/dldruntime/internal/buildinfo`
+    : `github.com/itchio/butler/buildinfo`;
 
   let ldflags = [
     `-X ${bi}.Version=${version}`,
@@ -192,7 +205,6 @@ async function main(args) {
   ].join(" ");
 
   if (opts.os === "darwin") {
-    // Add -arch flag for cross-compilation on ARM Mac
     let archFlag = opts.arch === "x86_64" ? "-arch x86_64" : "";
     setenv(`CGO_CFLAGS`, `-mmacosx-version-min=10.10 ${archFlag}`.trim());
     setenv(`CGO_LDFLAGS`, `-mmacosx-version-min=10.10 ${archFlag}`.trim());
@@ -205,7 +217,11 @@ async function main(args) {
 
   if (opts.os === "windows") {
     console.log(`Compiling Windows manifest`);
-    $(`windres -o butler.syso butler.rc`);
+    if (opts.dldRuntime) {
+      $(`windres -o dldruntime/cmd/dldruntime/butler.syso butler.rc`);
+    } else {
+      $(`windres -o butler.syso butler.rc`);
+    }
   }
 
   console.log(`Compiling binary`);
@@ -213,7 +229,11 @@ async function main(args) {
   setenv(`GOOS`, opts.os);
   setenv(`GOARCH`, goArch);
   setenv(`CGO_ENABLED`, `1`);
-  $(`go build -ldflags "${ldflags}"`);
+  if (opts.dldRuntime) {
+    $(`go build -C dldruntime -ldflags "${ldflags}" -o ../${target} ./cmd/dldruntime`);
+  } else {
+    $(`go build -ldflags "${ldflags}"`);
+  }
 
   if (opts.os === "linux") {
     console.log(`Checking minimum glibc version`);
@@ -239,8 +259,6 @@ async function main(args) {
     let signKey = "Developer ID Application: itch corp. (AK2D34UDP2)";
     $(`codesign --deep --force --verbose --sign "${signKey}" "${target}"`);
     $(`codesign --verify -vvvv "${target}"`);
-    // We don't use spctl -a on purpose, see
-    // https://stackoverflow.com/questions/39811791/mac-os-gatekeeper-blocking-signed-command-line-tool
   }
 
   header("Packaging...");
@@ -258,7 +276,11 @@ async function main(args) {
   }
 
   let fullButlerPath = resolve(process.cwd(), fullTarget);
-  $(`go test -v ./butlerd/integrate --butlerPath='${fullButlerPath}'`);
+  if (opts.dldRuntime) {
+    $(`go test -C dldruntime -v ./...`);
+  } else {
+    $(`go test -v ./butlerd/integrate --butlerPath='${fullButlerPath}'`);
+  }
 }
 
 /**
