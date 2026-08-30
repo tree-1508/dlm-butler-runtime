@@ -32,7 +32,8 @@ If SignPath requires an additional independent human for this project, release s
 
 ## License and release evidence
 The runtime payload remains exe-only. SBOMs, third-party notices, hashes, vulnerability evidence, and corresponding source are separate release evidence.
-Because the exact executable links GPL-family code, the generated corresponding-source bundle is mandatory for every executable distribution. See `DLD_051_COMPLIANCE.md`.
+License obligations are determined from the exact built executable for each candidate. The current dependency-minimized clean runtime candidate contains only `golang.org/x/sys v0.47.0` as a third-party Go module; earlier full-butler candidates that contained GPL-family/archive dependencies are historical and do not define the current signing candidate.
+The generated corresponding-source bundle remains mandatory project release evidence for reproducibility and for any source-distribution obligations that apply to the exact candidate. See `DLD_051_COMPLIANCE.md`.
 
 ## Required sequence
 1. unsigned exe-only qualification;

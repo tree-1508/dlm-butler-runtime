@@ -2,6 +2,9 @@
 > This repository is the DLM-maintained hardened fork of `itchio/butler` for an optional Doujin Library Manager runtime.
 > It is not official itch.io software and does not imply itch.io endorsement. See `DLD_FORK_NOTICE.md` and `CODE_SIGNING_POLICY.md`.
 
+> [!NOTE]
+> **Planned Windows release signing.** Free code signing is provided by SignPath.io, with a certificate provided by the SignPath Foundation. This project is preparing the SignPath Foundation application; no release binary is represented as SignPath-signed until the Foundation accepts the application and the approved Trusted Build and Origin Verification process has completed.
+
 # butler
 
 [![test](https://github.com/itchio/butler/actions/workflows/test.yml/badge.svg)](https://github.com/itchio/butler/actions/workflows/test.yml)
@@ -219,7 +222,7 @@ generous also has a `ts` mode for generating TypeScript bindings used by the [it
 The following projects integrate butler as part of their workflow:
 
   * [itchy-electron](https://github.com/erbridge/itchy-electron) lets you package your Electron games for itch.io and upload them there
-  * [gradle-butler-plugin](https://github.com/mini2Dx/gradle-butler-plugin) is a Gradle plugin for automatically installing, updating, and running butler as part of your build.
+  * [gradle-butler-plugin](https://github.com/mini2Dx/gradle-butler-plugin) is a Gradle plugin for automatically installing, updating, and running butler as part of their build.
 
 ## Authors
 

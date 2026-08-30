@@ -42,7 +42,7 @@ $notice = New-Object System.Text.StringBuilder
 [void]$notice.AppendLine('The module list below contains only modules embedded in the distributed Go executable.')
 [void]$notice.AppendLine('')
 [void]$notice.AppendLine('==== Main project license ====')
-[void]$notice.AppendLine((Get-Content -LiteralPath 'LICENSE' -Raw))
+[void]$notice.AppendLine((Get-Content -LiteralPath 'dldruntime/LICENSE' -Raw))
 [void]$notice.AppendLine('')
 
 $missing = @()
@@ -104,21 +104,20 @@ if ($missing.Count -gt 0) {
     'PASS' | Set-Content -Encoding ascii (Join-Path $OutDir 'LICENSE_GATE_STATUS.txt')
 }
 
-# GPL-family code is linked into the executable. Bundle the exact repository plus vendored
-# Go dependency sources so the pre-release can accompany the executable with corresponding source.
-# This evidence is generated even while the license gate is HOLD so Security can inspect the
-# exact candidate without losing downstream SBOM/vulnerability evidence.
+# The DLD release binary is built from the nested clean dldruntime module. Bundle
+# exactly that module plus its vendored dependency source. Generate this evidence
+# even while the final license gate is HOLD.
 $stageRoot = Join-Path $env:RUNNER_TEMP 'dld051-corresponding-source'
 if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
-$baseZip = Join-Path $env:RUNNER_TEMP 'dld051-source-base.zip'
-if (Test-Path -LiteralPath $baseZip) { Remove-Item -LiteralPath $baseZip -Force }
-& git archive --format=zip --output=$baseZip HEAD
-if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
-Expand-Archive -LiteralPath $baseZip -DestinationPath $stageRoot -Force
-& go mod vendor
-if ($LASTEXITCODE -ne 0) { throw 'go mod vendor failed' }
-Copy-Item -LiteralPath 'vendor' -Destination (Join-Path $stageRoot 'vendor') -Recurse -Force
+Copy-Item -LiteralPath 'dldruntime' -Destination (Join-Path $stageRoot 'dldruntime') -Recurse -Force
+$generatedSyso = Join-Path $stageRoot 'dldruntime/cmd/dldruntime/butler.syso'
+if (Test-Path -LiteralPath $generatedSyso) { Remove-Item -LiteralPath $generatedSyso -Force }
+& go -C dldruntime mod vendor
+if ($LASTEXITCODE -ne 0) { throw 'dldruntime go mod vendor failed' }
+$stageVendor = Join-Path $stageRoot 'dldruntime/vendor'
+if (Test-Path -LiteralPath $stageVendor) { Remove-Item -LiteralPath $stageVendor -Recurse -Force }
+Copy-Item -LiteralPath 'dldruntime/vendor' -Destination $stageVendor -Recurse -Force
 Copy-Item -LiteralPath $licensesDir -Destination (Join-Path $stageRoot 'EXACT_BINARY_LICENSES') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $OutDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $stageRoot 'THIRD_PARTY_NOTICES.txt') -Force
 Copy-Item -LiteralPath (Join-Path $OutDir 'EXACT_BINARY_MODULES.tsv') -Destination (Join-Path $stageRoot 'EXACT_BINARY_MODULES.tsv') -Force
