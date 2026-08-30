@@ -107,7 +107,7 @@ jobs:
           Write-Host "govulncheck exit code: $code"
           exit 0
 
-      - name: Enforce vulnerability closure
+      - name: Record vulnerability gate status
         shell: pwsh
         run: |
           $report = 'artifacts/compliance/govulncheck-exact-binary.json'
@@ -116,10 +116,13 @@ jobs:
           $count = 0
           foreach ($line in $findings) { $count += $line.Matches.Count }
           "$count" | Out-File -Encoding ascii artifacts/compliance/govulncheck-finding-count.txt
-          if ($count -ne 0) {
-            throw "Exact butler.exe has $count govulncheck finding record(s); disposition is required before DLD-051 license/security closure"
+          if ($count -eq 0) {
+            'PASS' | Out-File -Encoding ascii artifacts/compliance/VULNERABILITY_GATE_STATUS.txt
+            Write-Host 'No govulncheck finding records for the exact butler.exe.'
+          } else {
+            'HOLD' | Out-File -Encoding ascii artifacts/compliance/VULNERABILITY_GATE_STATUS.txt
+            Write-Warning "Exact butler.exe has $count govulncheck finding record(s); disposition is required before DLD-051 closure."
           }
-          Write-Host 'No govulncheck finding records for the exact butler.exe.'
 
       - name: Assert compliance payload
         shell: pwsh
@@ -127,17 +130,41 @@ jobs:
           $required = @(
             'artifacts/compliance/EXACT_BINARY_MODULES.tsv',
             'artifacts/compliance/LICENSE_MANIFEST.json',
+            'artifacts/compliance/LICENSE_GATE_STATUS.txt',
             'artifacts/compliance/THIRD_PARTY_NOTICES.txt',
             'artifacts/compliance/dld-051-corresponding-source.zip',
             'artifacts/compliance/SHA256SUMS.txt',
             'artifacts/compliance/butler-exact-binary.cdx.json',
             'artifacts/compliance/butler-windows-amd64-source.cdx.json',
             'artifacts/compliance/govulncheck-exact-binary.json',
-            'artifacts/compliance/govulncheck-finding-count.txt'
+            'artifacts/compliance/govulncheck-finding-count.txt',
+            'artifacts/compliance/VULNERABILITY_GATE_STATUS.txt'
           )
           foreach ($path in $required) {
             if (-not (Test-Path -LiteralPath $path)) { throw "Missing compliance artifact: $path" }
           }
+
+      - name: Enforce exact compliance closure
+        shell: pwsh
+        run: |
+          $reasons = @()
+          $license = (Get-Content -LiteralPath artifacts/compliance/LICENSE_GATE_STATUS.txt -Raw).Trim()
+          if ($license -ne 'PASS') {
+            $missing = @()
+            if (Test-Path -LiteralPath artifacts/compliance/MISSING_LICENSE_EVIDENCE.txt) {
+              $missing = @(Get-Content -LiteralPath artifacts/compliance/MISSING_LICENSE_EVIDENCE.txt | Where-Object { $_.Trim() })
+            }
+            $reasons += "license gate=$license; unresolved modules=$($missing.Count)"
+          }
+          $vuln = (Get-Content -LiteralPath artifacts/compliance/VULNERABILITY_GATE_STATUS.txt -Raw).Trim()
+          $findingCount = (Get-Content -LiteralPath artifacts/compliance/govulncheck-finding-count.txt -Raw).Trim()
+          if ($vuln -ne 'PASS') {
+            $reasons += "vulnerability gate=$vuln; govulncheck finding records=$findingCount"
+          }
+          if ($reasons.Count -gt 0) {
+            throw "DLD-051 exact compliance closure HOLD: $($reasons -join '; ')"
+          }
+          Write-Host 'DLD-051 exact license and vulnerability gates PASS for this exact candidate.'
 
       - name: Upload unsigned runtime and compliance evidence before any signing request
         if: always()
