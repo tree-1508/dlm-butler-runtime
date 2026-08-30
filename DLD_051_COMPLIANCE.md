@@ -14,25 +14,27 @@ Compliance material (SBOMs, notices, hashes, vulnerability evidence, and corresp
 The distributed executable is the dependency source of truth. The qualification workflow reads the exact built executable with `go version -m` and records `EXACT_BINARY_MODULES.tsv`.
 A dependency present only in `go.mod` is not treated as linked unless it is present in the binary metadata.
 
+The current dependency-minimized clean runtime candidate links only `golang.org/x/sys v0.47.0` as a third-party Go module. Earlier full-butler qualification candidates that linked `github.com/itchio/dmcunrar-go` and other butler dependencies are historical and do not describe the current clean runtime topology.
+
 ## License closure
 
-The exact Windows executable currently links `github.com/itchio/dmcunrar-go`, which carries GPL-family obligations. Therefore an executable release must not be treated as MIT-only merely because the upstream butler repository is MIT-licensed.
-
-Every distributed DLD Windows executable must be accompanied, in the same release, by:
+Every distributed DLD Windows executable must be accompanied, in the same release evidence set, by:
 
 - `THIRD_PARTY_NOTICES.txt`, generated from license/copying/notice files for every module embedded in the exact executable;
-- `LICENSE_MANIFEST.json` and the collected raw license files;
-- `dld-051-corresponding-source.zip`, containing the exact repository source plus vendored Go dependency sources needed to rebuild the executable;
+- `LICENSE_MANIFEST.json` and the collected raw exact-binary license files;
+- `dld-051-corresponding-source.zip`, containing the exact DLD runtime source plus vendored Go dependency sources needed to rebuild the executable;
 - `SHA256SUMS.txt`, binding the executable and corresponding-source bundle.
 
 The workflow fails if license evidence cannot be found for any exact linked module. No license may be silently classified or omitted.
+
+The corresponding-source bundle is retained for reproducibility, auditability, and to satisfy any source-distribution obligations that apply to a future exact candidate. It must not be described as a GPL-specific requirement unless the exact candidate actually contains GPL-family code.
 
 ## SBOM closure
 
 Every candidate build produces both:
 
 1. `butler-exact-binary.cdx.json` from the exact `butler.exe`; and
-2. `butler-windows-amd64-source.cdx.json` for the Windows/amd64 application with license evidence.
+2. `butler-windows-amd64-source.cdx.json` for the Windows/amd64 application under the same Windows build environment.
 
 CycloneDX generation is pinned to a recorded tool version in build provenance.
 
@@ -45,12 +47,13 @@ A non-zero finding count blocks DLD-051 closure until every finding has an expli
 
 Before an unsigned bootstrap pre-release is published, server-side protection for `dld-051-v15.30.0` must be enabled and verified. At minimum:
 
-- force pushes disabled;
-- branch deletion disabled;
-- required status checks include the DLD Windows unsigned trusted build and both DLD CI matrix jobs;
-- CodeQL analysis is required when GitHub exposes it as an eligible status check;
+- force/non-fast-forward updates blocked;
+- branch deletion blocked;
+- changes merged through a pull request;
+- required status checks include the DLD Windows unsigned trusted build, both DLD CI matrix jobs, and CodeQL analysis;
 - required checks must be current for the exact release commit;
-- administrators/maintainers do not bypass the release gate for a production signing request.
+- high-or-higher CodeQL alerts in changed code block merge;
+- no bypass actor may skip the release gate for a production signing request.
 
 The project currently has one maintainer, so the policy must not invent an independent reviewer or configure an approval rule that makes truthful maintenance impossible. If SignPath Foundation requires an additional independent reviewer, signing remains NO-GO until that requirement is genuinely met.
 
