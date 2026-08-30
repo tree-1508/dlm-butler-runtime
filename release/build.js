@@ -68,6 +68,7 @@ async function main(args) {
    *   userSpecifiedArch?: boolean,
    *   skipSigning: boolean,
    *   exeOnly: boolean,
+   *   dldRuntime: boolean,
    * }}
    */
   let opts = {
@@ -75,6 +76,7 @@ async function main(args) {
     arch: DEFAULT_ARCH,
     skipSigning: false,
     exeOnly: false,
+    dldRuntime: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -95,6 +97,11 @@ async function main(args) {
 
       if (k === "exe-only") {
         opts.exeOnly = true;
+        continue;
+      }
+
+      if (k === "dld-runtime") {
+        opts.dldRuntime = true;
         continue;
       }
 
@@ -137,6 +144,10 @@ async function main(args) {
     console.log(
       `Using detected arch ${chalk.yellow(opts.arch)} (use --arch to override)`,
     );
+  }
+
+  if (opts.dldRuntime) {
+    console.log("DLD least-privilege runtime build enabled (-tags dld_runtime)");
   }
 
   let osInfo = OS_INFOS[opts.os];
@@ -213,7 +224,8 @@ async function main(args) {
   setenv(`GOOS`, opts.os);
   setenv(`GOARCH`, goArch);
   setenv(`CGO_ENABLED`, `1`);
-  $(`go build -ldflags "${ldflags}"`);
+  let buildTags = opts.dldRuntime ? "-tags dld_runtime" : "";
+  $(`go build ${buildTags} -ldflags "${ldflags}"`);
 
   if (opts.os === "linux") {
     console.log(`Checking minimum glibc version`);
@@ -258,7 +270,12 @@ async function main(args) {
   }
 
   let fullButlerPath = resolve(process.cwd(), fullTarget);
-  $(`go test -v ./butlerd/integrate --butlerPath='${fullButlerPath}'`);
+  if (opts.dldRuntime) {
+    console.log("Running DLD stdio-only synthetic runtime qualification");
+    $(`go test -v ./butlerd/integrate -run '^Test_StdioTransport$' --butlerPath='${fullButlerPath}'`);
+  } else {
+    $(`go test -v ./butlerd/integrate --butlerPath='${fullButlerPath}'`);
+  }
 }
 
 /**

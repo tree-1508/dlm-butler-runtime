@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "security_basis": "Issue #150 comment 5465627296 Q3(B): durable authoritative public developer/module metadata tied to the exact source revision may establish the governing license when the exact version is bound.",
+  "entries": [
+    {
+      "module": "github.com/itchio/arkive",
+      "version": "v0.0.0-20260428180635-32e8e9c72151",
+      "revision": "32e8e9c72151",
+      "spdx": "BSD-3-Clause",
+      "evidence_type": "exact-revision upstream README license declaration + Go-derived provenance",
+      "evidence_url": "https://github.com/itchio/arkive/blob/32e8e9c72151/README.md",
+      "evidence_text": "arkive is BSD-licensed, like the original code.",
+      "derivation": "README states arkive is a fork of Go archive/zip and archive/tar packages.",
+      "canonical_terms_url": "https://github.com/golang/go/blob/master/LICENSE"
+    },
+    {
+      "module": "github.com/itchio/hades",
+      "version": "v0.0.0-20260711210423-80ab837c55cd",
+      "revision": "80ab837c55cd",
+      "spdx": "MIT",
+      "evidence_type": "exact-revision upstream README license declaration",
+      "evidence_url": "https://github.com/itchio/hades/blob/80ab837c55cd/README.md",
+      "evidence_text": "Licensed under MIT License, see LICENSE for details."
+    },
+    {
+      "module": "github.com/itchio/intact",
+      "version": "v0.0.0-20200301161822-f8c4a3336c2a",
+      "revision": "f8c4a3336c2a",
+      "spdx": "MIT",
+      "evidence_type": "exact-revision upstream README license badge",
+      "evidence_url": "https://github.com/itchio/intact/blob/f8c4a3336c2a/README.md",
+      "evidence_text": "MIT licensed"
+    },
+    {
+      "module": "github.com/itchio/kompress",
+      "version": "v0.0.0-20200301155538-5c2eecce9e51",
+      "revision": "5c2eecce9e51",
+      "spdx": "BSD-3-Clause",
+      "evidence_type": "exact-revision upstream README license declaration + Go-derived provenance",
+      "evidence_url": "https://github.com/itchio/kompress/blob/5c2eecce9e51/README.md",
+      "evidence_text": "kompress is BSD-licensed, like the original code.",
+      "derivation": "README states kompress is a fork of Go compress/flate, compress/gzip, and compress/bzip2.",
+      "canonical_terms_url": "https://github.com/golang/go/blob/master/LICENSE"
+    }
+  ]
+}

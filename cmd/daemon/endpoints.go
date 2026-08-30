@@ -1,3 +1,5 @@
+//go:build !dld_runtime
+
 package daemon
 
 import (
