@@ -24,3 +24,13 @@ jobs:
           languages: go
       - uses: github/codeql-action/autobuild@cdf488f595d80d6e07e03d4674febd5ab45fa938
       - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938
+        with:
+          output: codeql-results
+      - name: Upload CodeQL SARIF evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dld-051-codeql-sarif-${{ github.sha }}
+          path: codeql-results/
+          retention-days: 30
+          if-no-files-found: error
