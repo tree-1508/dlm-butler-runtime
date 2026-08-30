@@ -41,7 +41,7 @@ jobs:
         run: npm ci --no-audit
 
       - name: Build unsigned Windows runtime
-        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only
+        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only --dld-runtime
 
       - name: Assert exe-only artifact topology
         shell: pwsh
@@ -62,6 +62,7 @@ jobs:
           go version | Out-File -Encoding ascii artifacts/provenance/go-version.txt
           node --version | Out-File -Encoding ascii artifacts/provenance/node-version.txt
           npm --version | Out-File -Encoding ascii artifacts/provenance/npm-version.txt
+          'dld_runtime' | Out-File -Encoding ascii artifacts/provenance/go-build-tags.txt
           Get-FileHash artifacts/windows-amd64/butler.exe -Algorithm SHA256 |
             Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-sha256.txt
           Get-Item artifacts/windows-amd64/butler.exe |
