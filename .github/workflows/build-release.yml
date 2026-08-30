@@ -103,12 +103,16 @@ jobs:
 
       - name: Generate CycloneDX exact-binary and Windows-source SBOMs
         shell: pwsh
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
         run: |
           cyclonedx-gomod bin -json -output artifacts/compliance/butler-exact-binary.cdx.json artifacts/windows-amd64/butler.exe
           $sourceSbom = (Resolve-Path artifacts/compliance).Path + '/butler-windows-amd64-source.cdx.json'
           Push-Location dldruntime
           try {
-            cyclonedx-gomod app -licenses -json -output $sourceSbom ./cmd/dldruntime
+            cyclonedx-gomod app -licenses -json -output $sourceSbom -main ./cmd/dldruntime .
           } finally {
             Pop-Location
           }
