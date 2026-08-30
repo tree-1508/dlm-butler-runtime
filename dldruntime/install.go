@@ -167,6 +167,9 @@ func extractZip(path, dest string) error {
 		if zf.Mode()&os.ModeSymlink != 0 {
 			return errors.New("symlinks are not allowed in DLD archives")
 		}
+		if strings.Contains(zf.Name, "..") {
+			return errors.New("archive path contains prohibited traversal element")
+		}
 		target, err := safeArchiveTarget(dest, zf.Name)
 		if err != nil {
 			return err
@@ -214,6 +217,9 @@ func extractTar(reader io.Reader, dest string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if strings.Contains(h.Name, "..") {
+			return errors.New("archive path contains prohibited traversal element")
 		}
 		target, err := safeArchiveTarget(dest, h.Name)
 		if err != nil {
