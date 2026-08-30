@@ -25,35 +25,44 @@ jobs:
           go-version: '1.26.7'
           cache: false
 
-      - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
-        with:
-          node-version: '22.23.2'
-          cache: 'npm'
-
-      - name: Verify dependency graph is clean
+      - name: Verify clean runtime dependency graph
         shell: pwsh
         run: |
-          go mod verify
           go -C dldruntime mod verify
-          git diff --exit-code -- go.mod go.sum dldruntime/go.mod dldruntime/go.sum
+          git diff --exit-code -- dldruntime/go.mod dldruntime/go.sum
+          $forbidden = @('github.com/itchio/arkive','github.com/itchio/hades','github.com/itchio/hush','github.com/itchio/intact','github.com/itchio/kompress','github.com/itchio/screw')
+          $graph = go -C dldruntime list -m all
+          foreach ($module in $forbidden) {
+            if ($graph -match [regex]::Escape($module)) { throw "Forbidden unresolved-license module remains in clean graph: $module" }
+          }
 
-      - name: Install locked Node dependencies
-        run: npm ci --no-audit
-
-      - name: Build unsigned Windows runtime
-        run: node release/build.js --os windows --arch x86_64 --skip-signing --exe-only --dld-runtime
+      - name: Build and test unsigned clean Windows runtime
+        shell: pwsh
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: |
+          $builtAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $bi = 'github.com/tree-1508/dlm-butler-runtime/dldruntime/internal/buildinfo'
+          windres -o dldruntime/cmd/dldruntime/butler.syso butler.rc
+          go -C dldruntime build -trimpath -ldflags "-X $bi.Version=$env:GITHUB_REF_NAME -X $bi.BuiltAt=$builtAt -X $bi.Commit=$env:GITHUB_SHA -w -s" -o ../butler.exe ./cmd/dldruntime
+          go -C dldruntime test -v ./...
+          New-Item -ItemType Directory -Force artifacts/windows-amd64 | Out-Null
+          Move-Item -LiteralPath butler.exe -Destination artifacts/windows-amd64/butler.exe
+          & artifacts/windows-amd64/butler.exe -V
+          if ($LASTEXITCODE -ne 0) { throw 'clean runtime version probe failed' }
 
       - name: Assert exe-only artifact topology
         shell: pwsh
         run: |
           $files = @(Get-ChildItem -LiteralPath artifacts/windows-amd64 -File)
           $names = @($files | ForEach-Object { $_.Name })
-          if ($names.Count -ne 1 -or $names[0] -ne "butler.exe") {
+          if ($names.Count -ne 1 -or $names[0] -ne 'butler.exe') {
             throw "Expected exact exe-only artifact [butler.exe], got: $($names -join ', ')"
           }
-          if (Test-Path -LiteralPath artifacts/windows-amd64/7z.dll) { throw "7z.dll must not be present" }
-          if (Test-Path -LiteralPath artifacts/windows-amd64/c7zip.dll) { throw "c7zip.dll must not be present" }
+          if (Test-Path -LiteralPath artifacts/windows-amd64/7z.dll) { throw '7z.dll must not be present' }
+          if (Test-Path -LiteralPath artifacts/windows-amd64/c7zip.dll) { throw 'c7zip.dll must not be present' }
 
       - name: Prove DLD stdio runtime starts without provider traffic
         shell: pwsh
@@ -74,15 +83,10 @@ jobs:
           New-Item -ItemType Directory -Force artifacts/provenance | Out-Null
           git rev-parse HEAD | Out-File -Encoding ascii artifacts/provenance/git-commit.txt
           go version | Out-File -Encoding ascii artifacts/provenance/go-version.txt
-          node --version | Out-File -Encoding ascii artifacts/provenance/node-version.txt
-          npm --version | Out-File -Encoding ascii artifacts/provenance/npm-version.txt
-          Get-FileHash artifacts/windows-amd64/butler.exe -Algorithm SHA256 |
-            Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-sha256.txt
-          Get-Item artifacts/windows-amd64/butler.exe |
-            Select-Object Name,Length,LastWriteTimeUtc |
-            Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-file.txt
-          Get-ComputerInfo -Property OsName,OsVersion,WindowsVersion,OsBuildNumber |
-            Format-List | Out-File -Encoding utf8 artifacts/provenance/runner-os.txt
+          'Node/npm not used by the DLD clean trusted-build job' | Out-File -Encoding ascii artifacts/provenance/build-tooling-note.txt
+          Get-FileHash artifacts/windows-amd64/butler.exe -Algorithm SHA256 | Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-sha256.txt
+          Get-Item artifacts/windows-amd64/butler.exe | Select-Object Name,Length,LastWriteTimeUtc | Format-List | Out-File -Encoding utf8 artifacts/provenance/butler-exe-file.txt
+          Get-ComputerInfo -Property OsName,OsVersion,WindowsVersion,OsBuildNumber | Format-List | Out-File -Encoding utf8 artifacts/provenance/runner-os.txt
 
       - name: Install pinned compliance tools
         shell: pwsh
@@ -95,31 +99,25 @@ jobs:
       - name: Generate exact binary inventory, notices and corresponding source
         shell: pwsh
         run: |
-          ./.github/scripts/dld051-compliance.ps1 `
-            -BinaryPath artifacts/windows-amd64/butler.exe `
-            -OutDir artifacts/compliance
+          ./.github/scripts/dld051-compliance.ps1 -BinaryPath artifacts/windows-amd64/butler.exe -OutDir artifacts/compliance
 
       - name: Generate CycloneDX exact-binary and Windows-source SBOMs
         shell: pwsh
         run: |
-          cyclonedx-gomod bin -json `
-            -output artifacts/compliance/butler-exact-binary.cdx.json `
-            artifacts/windows-amd64/butler.exe
+          cyclonedx-gomod bin -json -output artifacts/compliance/butler-exact-binary.cdx.json artifacts/windows-amd64/butler.exe
           $sourceSbom = (Resolve-Path artifacts/compliance).Path + '/butler-windows-amd64-source.cdx.json'
           Push-Location dldruntime
           try {
-            cyclonedx-gomod app -licenses -json -output $sourceSbom .
+            cyclonedx-gomod app -licenses -json -output $sourceSbom ./cmd/dldruntime
           } finally {
             Pop-Location
           }
 
       - name: Scan exact binary with govulncheck
-        id: govulncheck
         shell: pwsh
         continue-on-error: true
         run: |
-          govulncheck -mode=binary -json artifacts/windows-amd64/butler.exe |
-            Out-File -Encoding utf8 artifacts/compliance/govulncheck-exact-binary.json
+          govulncheck -mode=binary -json artifacts/windows-amd64/butler.exe | Out-File -Encoding utf8 artifacts/compliance/govulncheck-exact-binary.json
           $code = $LASTEXITCODE
           "$code" | Out-File -Encoding ascii artifacts/compliance/govulncheck-exit-code.txt
           Write-Host "govulncheck exit code: $code"
@@ -136,52 +134,21 @@ jobs:
           "$count" | Out-File -Encoding ascii artifacts/compliance/govulncheck-finding-count.txt
           if ($count -eq 0) {
             'PASS' | Out-File -Encoding ascii artifacts/compliance/VULNERABILITY_GATE_STATUS.txt
-            Write-Host 'No govulncheck finding records for the exact butler.exe.'
           } else {
             'HOLD' | Out-File -Encoding ascii artifacts/compliance/VULNERABILITY_GATE_STATUS.txt
-            Write-Warning "Exact butler.exe has $count govulncheck finding record(s); disposition is required before DLD-051 closure."
+            Write-Warning "Exact butler.exe has $count govulncheck finding record(s)."
           }
 
-      - name: Assert compliance payload
+      - name: Assert and enforce exact compliance closure
         shell: pwsh
         run: |
-          $required = @(
-            'artifacts/compliance/EXACT_BINARY_MODULES.tsv',
-            'artifacts/compliance/LICENSE_MANIFEST.json',
-            'artifacts/compliance/LICENSE_GATE_STATUS.txt',
-            'artifacts/compliance/THIRD_PARTY_NOTICES.txt',
-            'artifacts/compliance/dld-051-corresponding-source.zip',
-            'artifacts/compliance/SHA256SUMS.txt',
-            'artifacts/compliance/butler-exact-binary.cdx.json',
-            'artifacts/compliance/butler-windows-amd64-source.cdx.json',
-            'artifacts/compliance/govulncheck-exact-binary.json',
-            'artifacts/compliance/govulncheck-finding-count.txt',
-            'artifacts/compliance/VULNERABILITY_GATE_STATUS.txt'
-          )
-          foreach ($path in $required) {
-            if (-not (Test-Path -LiteralPath $path)) { throw "Missing compliance artifact: $path" }
+          $required = @('EXACT_BINARY_MODULES.tsv','LICENSE_MANIFEST.json','LICENSE_GATE_STATUS.txt','THIRD_PARTY_NOTICES.txt','dld-051-corresponding-source.zip','SHA256SUMS.txt','butler-exact-binary.cdx.json','butler-windows-amd64-source.cdx.json','govulncheck-exact-binary.json','govulncheck-finding-count.txt','VULNERABILITY_GATE_STATUS.txt')
+          foreach ($name in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path artifacts/compliance $name))) { throw "Missing compliance artifact: $name" }
           }
-
-      - name: Enforce exact compliance closure
-        shell: pwsh
-        run: |
-          $reasons = @()
-          $license = (Get-Content -LiteralPath artifacts/compliance/LICENSE_GATE_STATUS.txt -Raw).Trim()
-          if ($license -ne 'PASS') {
-            $missing = @()
-            if (Test-Path -LiteralPath artifacts/compliance/MISSING_LICENSE_EVIDENCE.txt) {
-              $missing = @(Get-Content -LiteralPath artifacts/compliance/MISSING_LICENSE_EVIDENCE.txt | Where-Object { $_.Trim() })
-            }
-            $reasons += "license gate=$license; unresolved modules=$($missing.Count)"
-          }
-          $vuln = (Get-Content -LiteralPath artifacts/compliance/VULNERABILITY_GATE_STATUS.txt -Raw).Trim()
-          $findingCount = (Get-Content -LiteralPath artifacts/compliance/govulncheck-finding-count.txt -Raw).Trim()
-          if ($vuln -ne 'PASS') {
-            $reasons += "vulnerability gate=$vuln; govulncheck finding records=$findingCount"
-          }
-          if ($reasons.Count -gt 0) {
-            throw "DLD-051 exact compliance closure HOLD: $($reasons -join '; ')"
-          }
+          $license = (Get-Content artifacts/compliance/LICENSE_GATE_STATUS.txt -Raw).Trim()
+          $vuln = (Get-Content artifacts/compliance/VULNERABILITY_GATE_STATUS.txt -Raw).Trim()
+          if ($license -ne 'PASS' -or $vuln -ne 'PASS') { throw "DLD-051 exact compliance closure HOLD: license=$license vulnerability=$vuln" }
           Write-Host 'DLD-051 exact license and vulnerability gates PASS for this exact candidate.'
 
       - name: Upload unsigned runtime and compliance evidence before any signing request
